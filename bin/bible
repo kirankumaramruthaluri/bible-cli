@@ -1,0 +1,232 @@
+#!/usr/bin/env node
+
+// Dependencies
+import BibleScaper from "bible-scraper";
+import Couleurs from "couleurs";
+import Debug from "bug-killer";
+import RegexParser from "regex-parser";
+import ReadJson from "r-json";
+import WriteJson from "w-json";
+import Abs from "abs";
+import Yargs from "yargs";
+import OS from "os";
+import LeTable from "le-table";
+import IsThere from "is-there";
+
+// Help output
+import HELP from "./docs/help.js";
+import SAMPLE_CONFIGURATION from "./docs/sample-conf.js";
+
+const CONFIG_FILE_PATH = Abs("~/.bible-config.json");
+const SUBMODULES_DIR = Abs("~/.bible");
+
+const BibleCLIInit = () => {
+let config = {};
+
+// CLI args parser
+Yargs.usage(HELP);
+var Argv = Yargs.argv
+  , language = Argv.lang || Argv.language
+  , search = Argv.s || Argv.search
+  , searchResultColor = null;
+
+// Read the configuration file
+try {
+    config = ReadJson(CONFIG_FILE_PATH);
+} catch (e) {
+    if (e.code === "ENOENT") {
+        Debug.log(
+            "No configuration file was found. Initing the configuration file."
+          , "warn"
+        );
+        WriteJson(CONFIG_FILE_PATH, SAMPLE_CONFIGURATION)
+        Debug.log(
+            "The configuration file created successfully at the following location: "
+          + CONFIG_FILE_PATH
+          , "warn"
+        );
+        config = import(CONFIG_FILE_PATH);
+    } else {
+        Debug.log(
+            "Cannot read the configuration file. Reason: " + e.code
+          , "warn"
+        );
+    }
+}
+
+// Show the version
+if (Argv.v || Argv.version) {
+    return console.log(
+        "Bible " + import("/../package").version
+    + "\nBible.JS " + import("/../package").dependencies["bible.js"]
+    );
+}
+
+// Show help
+var references = Argv._;
+if (Argv.help ||  (!language && !references.length && !search)) {
+    return console.log(Yargs.help());
+}
+
+// Try to get options from config as well
+language = language || config.language;
+searchResultColor = (
+    Argv.rc || Argv.resultColor || config?.resultColor
+)?.split(/[ ,]+/);
+config.searchLimit = config.searchLimit || 10;
+
+// Table defaults
+LeTable.defaults.marks = {
+    nw: "┌"
+  , n:  "─"
+  , ne: "┐"
+  , e:  "│"
+  , se: "┘"
+  , s:  "─"
+  , sw: "└"
+  , w:  "│"
+  , b: " "
+  , mt: "┬"
+  , ml: "├"
+  , mr: "┤"
+  , mb: "┴"
+  , mm: "┼"
+};
+
+// Parse result color
+for (var i = 0; i < 3; ++i) {
+
+    if (!searchResultColor[i]) {
+        return console.log(
+            "Invalid result color. Please provide a string in this format:"
+          + "'r, g, b'. Example: --resultColor '255, 0, 0'"
+        );
+    }
+
+    searchResultColor[i] = parseInt(searchResultColor[i])
+}
+
+
+/**
+ * printOutput
+ * This function is called when the response from the
+ * search or get request comes
+ *
+ * @param {Error} err An error that ocured while fetching the verses.
+ * @param {Array} verses The verses array that was returned by bible.js module.
+ * @return {undefined} Returns undefined
+ */
+function printOutput (err, verses, verseStart, verseEnd) {
+
+    // Handle error
+    if (err) {
+        console.log("Error: ", err);
+        return;
+    }
+
+    // No verses
+    if (!verses || !verses.length) {
+        console.log("Verses not found");
+    }
+
+    var tbl = new LeTable();
+
+    if (!verseEnd && verseStart) {
+      verseEnd = verseStart;
+    } 
+
+    // Output each verse
+    for (let i = verseStart - 1 ?? 0; i <= verseEnd - 1; i++) {
+
+        // get the current verse and its reference
+        var cVerse = verses[i]
+          , cVerseRef = cVerse?.reference;
+
+        if (search) {
+
+            // Highlight search results
+            var re = typeof search === "string" ? RegexParser(search) : search
+              , match = cVerse.text.match(re) || []
+              ;
+
+            for (var ii = 0; ii < match.length; ++ii) {
+                cVerse.text = cVerse.text.replace (
+                    new RegExp(match[ii])
+                  , Couleurs.fg(match[ii], searchResultColor)
+                );
+            }
+        }
+
+        if (Argv.onlyVerses) {
+            console.log(cVerse.content);
+        } else {
+            tbl.addRow([
+                {text: cVerseRef, data: {hAlign: "right"}}
+              , {
+                    text: cVerse.content.match(/.{1,80}(\s|$)|\S+?(\s|$)/g).join("\n")
+                  , data: {hAlign: "left"}
+                }
+            ]);
+        }
+
+        // Search limit
+        if (search && --config.searchLimit <= 0) {
+            break;
+        }
+    }
+
+    // Output
+    if (!Argv.onlyVerses) {
+        console.log(tbl.toString());
+    }
+}
+
+// Check if the ~/.bible dir exists
+if (!IsThere(SUBMODULES_DIR)) {
+    Debug.log("~/.bible directory was not found. Downloading packages. This may take a while.", "info");
+}
+
+// Init submodules.
+(async function init(config){
+
+    //if (err) { throw err; }
+
+    // Create Bible instance
+    const bible = new BibleScaper(114);
+    const [bookChapter, verseLength] = Argv._[0]?.split(" ");
+    const [verseStart, verseEnd] = verseLength && verseLength.split("-");
+
+    // console.log(bookChapter, verseLength.split("-") , verseStart, verseEnd);
+
+
+    //let references = await bible.verse(Argv._[0]);
+    const { verses: bookVerses } = await bible.chapter(bookChapter);
+    printOutput(undefined, bookVerses, verseStart, verseEnd);
+     //console.log(verses?.verses);
+
+    // Get the verses
+    /*
+    if (references.length) {
+        for (var i = 0; i < references.length; ++i) {
+            (function (cR) {
+                if (!Argv.onlyVerses) {
+                    console.log("Reference: " + cR);
+                }
+                bibleIns.get(cR, printOutput);
+            })(references[i]);
+        }
+    }
+    */
+
+    // Search verses
+    if (search) {
+        if (!Argv.onlyVerses) {
+            console.log("Results for search: " + search);
+        }
+        //bibleIns.search(search, printOutput);
+    }
+})(config);
+
+};
+
+export default BibleCLIInit();

@@ -1,0 +1,29 @@
+{
+  "name": "bible-cli",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "bin": {
+    "bible": "./bin/bible"
+  },
+  "type": "module",
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "abs": "^1.0.0",
+    "bible-scraper": "^2.2.0",
+    "bug-killer": "^4.0.0",
+    "couleurs": "^5.0.0",
+    "is-there": "^4.0.0",
+    "le-table": "^4.0.0",
+    "r-json": "^1.0.0",
+    "regex-parser": "^2.0.0",
+    "ul": "^5.0.0",
+    "w-json": "^1.0.0",
+    "yargs": "^3.15.0"
+  }
+}
